@@ -1,6 +1,3 @@
-# ======================================
-# 【AI生成】：基础库导入、路径、随机种子、设备配置
-# ======================================
 import os
 import numpy as np
 import pandas as pd
@@ -39,10 +36,8 @@ set_seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-# ======================================
-# 【AI生成】：数据加载、基本统计
-# ======================================
-print("\n【步骤1】加载数据...")
+# 数据加载、基本统计
+print("\n加载数据...")
 train_df = pd.read_csv('train.csv')
 valid_df = pd.read_csv('valid.csv')
 test_users_df = pd.read_csv('test_users.csv')
@@ -54,9 +49,7 @@ print(f"测试集: {len(test_users_df)}个用户")
 print(f"商品数: {len(items_df)}个")
 
 
-# ======================================
-# 【AI生成】：价格清洗 + 标准化
-# ======================================
+# 价格清洗 + 标准化
 def clean_price(price):
     if pd.isna(price):
         return 0.0
@@ -73,9 +66,7 @@ items_df['price_clean'] = items_df['price'].apply(clean_price)
 price_scaler = StandardScaler()
 items_df['price_scaled'] = price_scaler.fit_transform(items_df[['price_clean']])
 
-# ======================================
-# 【AI生成】：过滤无图商品、构建item/user映射
-# ======================================
+# 过滤无图商品、构建item/user映射
 items_df = items_df.dropna(subset=['image_path']).reset_index(drop=True)
 print(f"有图片的商品数: {len(items_df)}")
 
@@ -92,10 +83,8 @@ num_users = len(users)
 
 print(f"有效用户数: {num_users}, 有效商品数: {num_items}")
 
-# ======================================
-# 【AI生成】：图像transform + ResNet50特征提取器
-# ======================================
-print("\n【步骤2】提取多模态特征...")
+# 图像transform + ResNet50特征提取器
+print("\n提取多模态特征...")
 img_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -123,9 +112,7 @@ class ImageExtractor:
             return np.zeros(2048)
 
 
-# ======================================
-# 【AI生成】：批量提取图像特征
-# ======================================
+# 批量提取图像特征
 print("提取图像特征中...")
 extractor = ImageExtractor()
 image_feats = []
@@ -136,9 +123,7 @@ for _, row in tqdm(items_df.iterrows(), desc="提取图像特征"):
 image_matrix = np.nan_to_num(np.array(image_feats))
 print(f"图像特征维度: {image_matrix.shape}")
 
-# ======================================
-# 【AI生成】：文本拼接 + TF-IDF
-# ======================================
+# 文本拼接 + TF-IDF
 print("提取文本特征中...")
 texts = []
 for _, row in items_df.iterrows():
@@ -157,9 +142,7 @@ text_matrix = tfidf.fit_transform(texts).toarray()
 text_matrix = np.nan_to_num(text_matrix)
 print(f"文本特征维度: {text_matrix.shape}")
 
-# ======================================
-# 【AI生成】：PCA降维 + 拼接图像/文本/价格
-# ======================================
+# PCA降维 + 拼接图像/文本/价格
 print("降维处理...")
 pca_img = PCA(n_components=128)
 image_feats_128 = pca_img.fit_transform(image_matrix)
@@ -179,10 +162,8 @@ final_features = feature_scaler.fit_transform(final_features)
 
 item_features = torch.FloatTensor(final_features).to(device)
 print(f"商品最终特征维度: {item_features.shape}")
-# ======================================
-# 【AI生成】：构建用户交互序列
-# ======================================
-print("\n【步骤3】构建用户序列...")
+# 构建用户交互序列
+print("\n构建用户序列...")
 train_df = train_df.sort_values(['user_id', 'timestamp']).reset_index(drop=True)
 user_seq = defaultdict(list)
 for uid, iid in zip(train_df['user_id'], train_df['item_id']):
@@ -201,9 +182,7 @@ for uid in users:
 print(f"训练样本数: {len(train_sequences)}")
 
 
-# ======================================
-# 【AI生成】：SASRec Dataset（负采样+序列padding）
-# ======================================
+# SASRec Dataset（负采样+序列padding）
 class SASRecDataset(Dataset):
     def __init__(self, sequences, num_items, max_len=50, neg_samples=10):
         self.sequences = sequences
@@ -247,9 +226,7 @@ class SASRecDataset(Dataset):
         )
 
 
-# ======================================
-# 【AI生成】：SASRec 模型（融合多模态特征）
-# ======================================
+# SASRec 模型（融合多模态特征）
 class SASRecModel(nn.Module):
     def __init__(self, num_items, item_features_dim=257, embed_size=256,
                  max_len=50, num_heads=8, num_layers=2, dropout=0.2, use_multimodal=True):
@@ -354,9 +331,7 @@ class SASRecModel(nn.Module):
         return scores
 
 
-# ======================================
-# 【AI生成】：训练函数（BPR损失）
-# ======================================
+# 训练函数（BPR损失）
 def train_epoch(model, train_loader, optimizer, item_features, device):
     model.train()
     total_loss = 0
@@ -381,9 +356,7 @@ def train_epoch(model, train_loader, optimizer, item_features, device):
     return total_loss / len(train_loader)
 
 
-# ======================================
-# 【AI生成】：评估函数（NDCG@20）
-# ======================================
+# 评估函数（NDCG@20）
 def evaluate(model, valid_df, user_seq_train, item_features, max_len=50, K=20):
     model.eval()
     all_ndcg_scores = []
@@ -438,9 +411,7 @@ def evaluate(model, valid_df, user_seq_train, item_features, max_len=50, K=20):
     return np.mean(all_ndcg_scores)
 
 
-# ======================================
 # 基础训练 + 生成提交文件
-# ======================================
 def run_baseline_training():
     print("\n" + "=" * 80)
     print("基础训练模式 - 训练多模态模型并生成提交文件")
@@ -490,7 +461,7 @@ def run_baseline_training():
             if val_ndcg > best_ndcg:
                 best_ndcg = val_ndcg
                 torch.save(model.state_dict(), 'best_model_multimodal.pth')
-                print(f"  >>> 保存最佳模型 (NDCG@20={best_ndcg:.4f})")
+                print(f"  保存最佳模型 (NDCG@20={best_ndcg:.4f})")
                 wait = 0
             else:
                 wait += 1
@@ -503,7 +474,7 @@ def run_baseline_training():
         scheduler.step()
 
     print(f"\n最佳验证NDCG@20: {best_ndcg:.4f}")
-    print("\n【生成提交文件】")
+    print("\n生成提交文件...")
     # 全量数据训练
     full_train_df = pd.concat([train_df, valid_df], ignore_index=True)
     full_train_df = full_train_df.sort_values(['user_id', 'timestamp']).reset_index(drop=True)
@@ -592,19 +563,19 @@ def run_baseline_training():
     print(f"\n提交文件已保存: submission_sasrec.csv")
     print(f"最佳验证NDCG@20: {best_ndcg:.4f}")
     return best_ndcg
-# ======================================
-# 【封装函数2】：ID模型 vs 多模态模型对比实验
-# ======================================
+
+
+# ID模型 vs 多模态模型对比实验
 def run_model_comparison():
     print("\n" + "=" * 80)
-    print("【功能2】ID模型 vs 多模态模型性能对比实验")
+    print("ID模型 vs 多模态模型性能对比实验")
     print("=" * 80)
     results = {}
     # 训练多模态模型
-    print("\n>>> 训练多模态模型...")
+    print("\n训练多模态模型...")
     results['multimodal'] = train_single_model(use_multimodal=True)
     # 训练ID模型
-    print("\n>>> 训练ID模型...")
+    print("\n训练ID模型...")
     results['id_only'] = train_single_model(use_multimodal=False)
     plot_comparison(results)
     comparison_df = pd.DataFrame({
@@ -616,6 +587,8 @@ def run_model_comparison():
     comparison_df.to_csv('model_comparison_results.csv', index=False)
     print("\n对比结果已保存到: model_comparison_results.csv")
     return results
+
+
 def train_single_model(use_multimodal=True):
     """训练单个模型（ID only 或 多模态）"""
     model_name = "Multimodal" if use_multimodal else "ID Only"
@@ -735,13 +708,11 @@ def plot_comparison(results):
     print("对比图已保存到: model_comparison.png")
 
 
-# ======================================
-# 【封装函数3】：超参数影响分析
-# ======================================
+# 超参数影响分析
 def run_hyperparameter_analysis():
-    """功能3：超参数影响分析"""
+    """超参数影响分析"""
     print("\n" + "=" * 80)
-    print("【功能3】超参数影响分析实验")
+    print("超参数影响分析实验")
     print("=" * 80)
 
     # 定义要测试的超参数
@@ -756,7 +727,7 @@ def run_hyperparameter_analysis():
 
     # 测试每个超参数
     for param_name, param_values in hyperparams_to_test.items():
-        print(f"\n>>> 测试超参数: {param_name}")
+        print(f"\n测试超参数: {param_name}")
         param_results = []
 
         for value in param_values:
@@ -900,7 +871,7 @@ def save_hyperparameter_results(all_results):
 
 def main():
     print("=" * 80)
-    print("📌 智能推荐系统实验功能选择")
+    print("智能推荐系统实验功能选择")
     print("=" * 80)
     print("1. 基础训练 + 生成测试提交文件")
     print("2. ID模型 vs 多模态模型性能对比实验")
@@ -910,11 +881,11 @@ def main():
     while True:
         user_choice = input("\n请输入要执行的功能编号（1-4）：").strip()
         if not user_choice.isdigit():
-            print("❌ 输入无效，请输入1-4之间的数字！")
+            print("输入无效，请输入1-4之间的数字！")
             continue
         choice_num = int(user_choice)
         if choice_num < 1 or choice_num > 4:
-            print("❌ 编号超出范围，请输入1-4之间的数字！")
+            print("编号超出范围，请输入1-4之间的数字！")
             continue
         if choice_num == 1:
             print("\n开始执行：基础训练 + 生成提交文件")
